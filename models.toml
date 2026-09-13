@@ -64,11 +64,14 @@ medium  = "gpt-6-astra"
 # Claude Code: --model <model> --effort <effort>. No fast tier.
 
 [claude-code.opus]
-default = "high"
+default = "medium"
+medium  = "claude-opus-5"
 high    = "claude-opus-5"
 
 [claude-code.fable]
-default = "high"
+default = "medium"
+low     = "claude-fable-5-1"
+medium  = "claude-fable-5-1"
 high    = "claude-fable-5-1"
 
 
