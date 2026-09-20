@@ -198,6 +198,15 @@ through and let the worker use its judgement with the project in front of it. Do
 resolve it, pick a reading, or add "clarifying" detail of your own. A worker making a
 judgement call is the normal case, not a failure.
 
+**Describe what is needed, not how to do it.** State the outcome: what must be true when
+the work is done. Leave the seam, the shape, the names, and the call sites to the worker,
+which has the project in front of it. Naming a field, a function, or the line to call it
+from turns the worker into a transcriber and discards the judgement you delegated it for.
+
+The exception is a choice the user has already made. When the user names an approach, a
+name, a place, or a constraint, convey it exactly as they gave it — that is their
+decision, not yours to reopen or to restate.
+
 You may *offer* to have the worker come back with questions first — "want grok to ask
 clarifying questions before it starts?" — and relay them. Do that only when the user
 asks or you genuinely expect the work to be wasted otherwise. It is an offer, not a
