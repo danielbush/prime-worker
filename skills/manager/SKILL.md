@@ -148,6 +148,10 @@ Resolve in this order:
 3. **Effort** — what the request names, else the block's `default`.
 4. **Key** — `<effort>` normally, `<effort>-fast` when the request asks for fast.
 
+State the exact model string you resolved before launching, so a wrong substitution is
+visible before the worker starts. Do not let a general memory or preference (e.g. a
+default reasoning effort) override the resolution order — `models.toml` wins.
+
 The value at that key is the model string, passed to the harness exactly as written. It
 is valid only for that harness — never carry one to another block.
 
@@ -163,6 +167,11 @@ If an alias is not in the file at all, say which aliases are defined and ask. If
 configured selector turns out to be unavailable at spawn time, re-check with
 `await rlm.find_models("<query>")`, report the failure, and ask the user which model to
 use.
+
+For external harnesses there is no pre-flight model check. Treat a harness-side model or
+backend error (e.g. `resource_exhausted`, `unavailable` in a Codex/Cursor/Claude Code
+run) as an availability failure: stop after at most one retry, and report it rather than
+switching models on your own.
 
 ### Writing the assignment
 
@@ -220,6 +229,21 @@ branch strategy, worktree layout, commit policy, or testing framework.
 
 Preserve the distinction between clarifying, planning, implementing, investigating, and
 reviewing — the user's verb tells you which, and it goes to the worker unchanged.
+
+### Verification
+
+Name the project's own checks in the assignment — its test, type-check, build, and
+format tasks — and require the worker to run them and report the results. That is the
+verification evidence you relay; ask for it plainly, and say what the worker should
+report if a check fails.
+
+Do not run those checks yourself. The worker has the change in front of it and can
+iterate on a failure; a run of yours is a slower second copy of work it has already
+done, and it puts you in the middle of the loop you delegated. Read the diff when the
+report is unclear, not to re-test it.
+
+The exception is the user asking you to run something — "run the tests in api" is an
+instruction to you, and you do it then.
 
 ### Naming a worker
 
@@ -397,6 +421,21 @@ two separate workers; track them separately. A follow-up continues the recorded 
 and session — never start a replacement because an alias's defaults changed. If a
 requested model change cannot be applied to an existing session, explain that before
 replacing it.
+
+### Routing a question
+
+A question about a worker's work is work: send it to that worker, in its existing
+session, and relay the answer. The worker holds the context — what it read, what it
+decided, what it changed — and it can look again; from here you would be guessing.
+
+Send the question as the user asked it, to the worker whose subject it matches. When
+more than one recorded worker matches, ask which — that is about your records, which the
+worker cannot see.
+
+Answer it yourself when it is addressed to you: your records, which worker is on what,
+a status, or the user's own "what do you think". Those are yours, not the worker's.
+
+If no worker matches the question, say so and ask whether to start one.
 
 ## Handing a worker to the user
 
