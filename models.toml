@@ -52,8 +52,8 @@ high-fast = "claude-opus-5-thinking-high-fast"
 
 [codex.sol]
 default = "medium"
-medium  = "gpt-5.6-sol"
-high    = "gpt-5.6-sol"
+medium  = "gpt-6-sol"
+high    = "gpt-6-sol"
 
 [codex.astra]
 default = "low"
