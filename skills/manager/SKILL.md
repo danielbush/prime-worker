@@ -105,8 +105,11 @@ Do this once, on first use:
    (see [Modes](#modes)). In `PROJECT_MODE` the session's cwd is the project path for
    every assignment.
 3. Read `../../styles/` and your saved style toggles (see [Styles](#styles)).
-4. Read your request record if one exists (see [Request records](#request-records)).
-5. Check the sleep lock (see [Keeping the machine awake](#keeping-the-machine-awake)).
+4. Read `WORKFLOWS.md` at the working directory (e.g. `/Users/danb/work/prime-worker/WORKFLOWS.md`)
+   — environment-specific procedures and gotchas discovered in earlier sessions. Append new
+   discoveries to it as they are confirmed, and propose the entry to the user.
+5. Read your request record if one exists (see [Request records](#request-records)).
+6. Check the sleep lock (see [Keeping the machine awake](#keeping-the-machine-awake)).
 
 ## Handling a request
 
