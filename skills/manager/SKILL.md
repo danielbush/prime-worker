@@ -82,6 +82,13 @@ finishes, fails, or needs a decision — or when the user asks.
 
 ## Setup for the session
 
+**SOPs are the mechanism for environment-specific procedures.** Anything that varies
+by environment or user preference — handoffs, opening codebases, worktrees, harvest
+rituals, launch quirks — is recorded in `SOP.md` at the working directory and followed
+from there, rather than hard-coded in this skill. When you discover a working
+procedure, propose adding it; when a section of this skill conflicts with an SOP, the
+SOP wins.
+
 Do this once, on first use:
 
 1. Read the alias configuration. `$PRIME_WORKER_MODELS` holds its path when the
@@ -105,7 +112,7 @@ Do this once, on first use:
    (see [Modes](#modes)). In `PROJECT_MODE` the session's cwd is the project path for
    every assignment.
 3. Read `../../styles/` and your saved style toggles (see [Styles](#styles)).
-4. Read `WORKFLOWS.md` at the working directory (e.g. `/Users/danb/work/prime-worker/WORKFLOWS.md`)
+4. Read `SOP.md` at the working directory (e.g. `/Users/danb/work/prime-worker/SOP.md`)
    — environment-specific procedures and gotchas discovered in earlier sessions. Append new
    discoveries to it as they are confirmed, and propose the entry to the user.
 5. Read your request record if one exists (see [Request records](#request-records)).
@@ -343,7 +350,7 @@ How the lock is held differs by worker:
   to wrap, so hold the lock as a separate background handle and kill it when the child's
   result arrives. See [Native workers](#native-workers).
 
-The handoff to the user in tmux takes no lock — someone is at the keyboard.
+The handoff to the user takes no sleep lock — someone is at the keyboard.
 
 ## Native workers
 
@@ -442,95 +449,60 @@ If no worker matches the question, say so and ask whether to start one.
 
 ## Handing a worker to the user
 
-The user can take over a worker and talk to it directly, in that worker's own session,
-in a tmux window. "let me talk to grok about demo 2", "open sol's session", "I want to
-drive this one myself."
+The user can take over a worker and talk to it directly, in that worker's own session.
+"let me talk to grok about demo 2", "open sol's session", "I want to drive this one
+myself."
 
-You resolve the handle to its session, open the window, and step back. You do not
-attach — your `bash()` runs in the kernel, not on the user's terminal, so `tmux attach`
-from here attaches nothing. The user runs that themselves.
+**Use the SOP.** The handoff procedure is environment-specific — which terminal, which
+multiplexer, whether anything is staged at all — and it lives in `SOP.md` at the
+working directory. Read it and follow it. That is the mechanism; this skill does not
+prescribe one.
 
-### Before you open anything
+If `SOP.md` has no handoff entry, say so and offer to set one up with the user: agree
+on how they want to receive a worker, try it once, and record what worked in
+`SOP.md`. Encourage this — one recorded procedure turns every later handoff into a
+single repeatable step, and it captures the environment quirks (terminal rendering,
+multiplexer behaviour) that no default can guess.
+
+Whatever the SOP says, three constants hold:
+
+- You resolve the handle to its session and produce the **interactive** resume
+  command for that harness — see its reference, and `prime-agent attach <handle>`
+  for a native child. Never `-p` / `exec`: those are your forms, not the user's.
+- You do not attach or launch anything on the user's terminal. Your `bash()` runs in
+  the kernel, not where the user types. Run exactly what the SOP records; if the SOP
+  has no staged mechanism, give the user the command and the directory to run
+  themselves:
+
+  ```text
+  grok-demo2-impl is a Cursor session. In another terminal:
+    cd /path/to/api && cursor-agent --resume 6aa03231-…
+  ```
+
+- The handoff to the user takes no sleep lock — someone is at the keyboard.
+
+### Before you hand over
 
 **The worker must not be running.** Two writers on one session diverge or clobber it.
-Check first — `handle.poll()` for an external worker, idle status for a native child. If
-it is still running, say so and offer to send it a message instead. Do not open the
-window anyway.
+Check first — `handle.poll()` for an external worker, idle status for a native child.
+If it is still running, say so and offer to send it a message instead. Do not hand it
+over anyway.
 
 **Say what changes.** An interactive resume uses the harness's own configuration, not
 the flags you launched with: a worker you started `-s read-only` may come back as
 whatever the user's `config.toml` says. Mention it in the same breath as the command.
 
-### Opening the window
-
-One tmux session, `prime-worker`, created if it is not there; one window per worker
-handle, reused if it already exists.
-
-```python
-import shlex
-
-h = shlex.quote(handle_name)
-result = await bash(
-    "tmux has-session -t prime-worker 2>/dev/null || tmux new-session -d -s prime-worker; "
-    f"tmux list-windows -t prime-worker -F '#W' | grep -qx {h} || "
-    f"tmux new-window -d -t prime-worker -n {h} -c {shlex.quote(project_path)} "
-    f"{shlex.quote(resume_command)}; "
-    "[ -z \"$(tmux list-clients -t prime-worker 2>/dev/null)\" ] && "
-    f"tmux select-window -t prime-worker:{h}; true"
-)
-print(result.output)
-```
-
-Shell logic, not Python branching: the session is created only if absent, and the window
-only if a window of that name is not already there. Running it twice is harmless, and it
-does not depend on reading an exit status back out of `bash()`.
-
-`-d` on `new-window` keeps it from yanking a user who is already attached and reading
-something else. But a freshly created session leaves an idle shell as window 0, and
-`tmux attach` lands on whatever window is current — so when nobody is attached, select
-the new window, and the user arrives looking at the worker instead of a bare prompt.
-Verified: without the `select-window`, attaching lands on window 0.
-
-The resume command is the **interactive** form for that harness — see its reference, and
-`prime-agent attach <handle>` for a native child. Never `-p` / `exec`: those are your
-forms, not the user's.
-
-Then give them one line to run and nothing else:
-
-```text
-grok-demo2-impl is open in tmux. Run:  tmux attach -t prime-worker
-It is window "grok-demo2-impl". prefix+d comes back here.
-```
-
-Never kill a window. The user closes it when they are done.
-
-The `prime-worker` session is shared by every manager session on the machine, so a
-window of that name may belong to a different manager. Handles are unique within your
-session, not across them — if you find a window you did not open, say so and ask rather
-than reusing it.
-
-**Without tmux**, the handoff still works; you just cannot stage it. Give the user the
-resume command and the directory, and let them run it in another terminal:
-
-```text
-grok-demo2-impl is a Cursor session. In another terminal:
-  cd /path/to/api && cursor-agent --resume 6aa03231-…
-```
-
-Everything under [While the user is driving](#while-the-user-is-driving) applies the
-same way — mark it `user-driving` before you hand over the command.
-
 ### While the user is driving
 
-Mark the entry `status: user-driving` **before** you open the window, and from that
-moment treat the session as not yours:
+Mark the entry `status: user-driving` **before** you hand over, and from that moment
+treat the session as not yours:
 
 - Do not resume it. No follow-ups, no review routing, no `after-completion` style.
 - The external-worker heartbeat skips it.
 - Do not report on it. You cannot see those turns.
 
-The handoff ends when the user says so, or when the window is gone
-(`tmux list-windows -t prime-worker`). Then set the status back to what is true.
+The handoff ends when the user says so, or when they close whatever the SOP opened.
+Then set the status back to what is true.
 
 ### Catching up afterwards
 
@@ -540,12 +512,12 @@ conversation even though you did not see it.
 
 What is stale is your record. Do not write a result you did not observe, and do not
 guess one from the files changed. Ask instead — the cheapest route works on all three
-harnesses: begin your next assignment to that worker with a line asking it to summarise
-what it and the user settled on. Or ask the user. Read the harness's own transcript only
-if that fails; Cursor does not keep a readable one.
+harnesses: begin your next assignment to that worker with a line asking it to
+summarise what it and the user settled on. Or ask the user. Read the harness's own
+transcript only if that fails; Cursor does not keep a readable one.
 
-Record that a handoff happened, so a later "grok's work" is not read as your assignment
-alone.
+Record that a handoff happened, so a later "grok's work" is not read as your
+assignment alone.
 
 ## Concurrency
 
@@ -629,7 +601,7 @@ worker, record your chosen handle, the harness's own session ID, its output file
 its background `bash()` handle, plus the label of the heartbeat watching it.
 
 `status` is one of `pending`, `running`, `done`, `failed`, or `user-driving` — the last
-written *before* you open a tmux window and held until the handoff ends (see
+written *before* the handoff starts and held until it ends (see
 [Handing a worker to the user](#handing-a-worker-to-the-user)). Add a `handoff:` line
 each time one happens; without it a later reader cannot tell which turns you saw.
 

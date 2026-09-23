@@ -19,6 +19,12 @@ tracks it, and relays the result. It does not investigate, plan, or rewrite what
 you asked for unless you want it to.  The manager tracks worker sessions so you
 can feed work to an existing worker eg to give feedback.
 
+For smaller things it's very possible to just iterate with the manager as the
+go-between.  It can resume the worker agent session and give feedback etc.  For
+more involved things I like to get the manager to resume a session for a worker
+agent so I can drop in and talk directly to the worker.  See author's notes
+below about code architecture and why this might still be necessary.
+
 Inspired by Kun Chen's [firstmate](https://github.com/kunchenguid/firstmate).
 
 ## Example session
@@ -40,8 +46,10 @@ What is happening there:
 
 My thoughts and assumptions as at Aug-2026:
 
+- I tend to use HUB_MODE - PROJECT_MODE was used initially to bootstrap this project; it's probably still usable, but I prefer
+  to have my working notes, todo's etc in a working dir.
 - I'm running on a budget so I'm generally not using intelligence signifcantly above sol 5.6 medium level
-- I'm juggling between very modest codex, curosr, claude subscriptions and trying to take advantage of cheap but powerful open weight models via openrouter or similar
+- I'm juggling between very modest codex, cursor, claude subscriptions and trying to take advantage of cheap but powerful open weight models via openrouter or similar
 - I'm working on slightly novel non-trivial projects, and I'm just not comfortable blackboxing them, I need to understand the code at least as a well-structured system and my obervation is that agents can write great code but architecture is not quite there (this is changing all the time)
 - I have various directives for the coding agent to encourage it to structure code so it's not just a bag of functions and to encourage it to focus on entities and data modelling and testable code (eg dependency injection, nulled instances). This is not included here, it's something you put in or link to from your AGENTS.md for the project the coding agent is working on
 - My preferred approach is:
@@ -51,7 +59,7 @@ My thoughts and assumptions as at Aug-2026:
   - user should try to work in small iterations with immediate demonstrable feedback to keep any planning small
     - also avoids risk of generating lots of code unanchored to some tangible outcome, which is very easy to do with agents.
     - (In other words, agile still wins and waterfall can be weirdly magnified via AI slop)
-  - ambiguities and misunderstandings get hammered out in review or via investigative tasks issues before building anything
+  - ambiguities and misunderstandings get hammered out in review of each small iteration rather than trying to plan them away up front
 - Earlier attempts at a managing agent in pi or prime-agent harness didn't work for me
   - they had project management structures and workflows which I could not decide on
   - it led to a weird combination of scripting and deterministic code mixed with agent discretion
@@ -70,6 +78,14 @@ My thoughts and assumptions as at Aug-2026:
 You need Prime Agent installed and authenticated, plus the CLI of any external harness
 you use (`codex login`, `cursor-agent login`, `claude`). `tmux` is optional — it is only
 needed to [talk to a worker directly](#talking-to-a-worker-yourself).
+
+Procedures like these are not hard-coded. There is an SOP mechanism: the manager reads
+an `SOP.md` at the working directory, where the user and manager set up their own
+custom procedures — how to resume a worker agent for the user (tmux, iTerm2, zellij,
+a plain command in another terminal), how to open codebases, how to use worktrees,
+environment quirks and gotchas. What is in `SOP.md` overrides the defaults described
+in this README and the skill docs; new discoveries get appended there as they are
+confirmed. See [SOP.example.md](./SOP.example.md) for the shape of one.
 
 While a worker runs, the machine is kept awake with `caffeinate` (macOS) or
 `systemd-inhibit` (Linux), via [bin/keep-awake](./bin/keep-awake). If neither is
@@ -165,63 +181,53 @@ Agent children rather than a separate CLI.
 
 ## How it works
 
-The manager keeps one Markdown file in its own session directory
-(`~/.prime/agent/session-artifacts/<session-id>/manager/requests.md`) holding your
-wording, the worker's identity, status, and result. Nothing is written into your
-repository.
-
-Native workers are Prime Agent RLM children, addressable for follow-ups while the
-manager session is open — so "get grok to process sol's review" reaches the original
-worker in its original session. External workers are CLI invocations; the manager
-captures the harness's own session ID and resumes through that CLI.
-
-Nothing blocks. A launch ends the turn, and you keep talking. Native results arrive by
-agent message; external workers are checked by a single one-minute heartbeat that stays
-silent until something finishes.
-
-Several workers can run in the same checkout, with no locking. Ask for a worktree if you
-want isolation — in HUB_MODE they are created with plain `git worktree` under
-`<hub>/worktrees/<workspace>/<worker-handle>`, on a branch of the same name. The manager
-records which worker owns which worktree, and never removes one; on restore it points
-out any whose worker is gone.
+- **Skill loading:** the `prime-worker` launcher passes every `skills/*/SKILL.md` in
+  this repo to prime-agent as `--skill <dir>`, and sends `/skill:manager` as the first
+  message — loading a skill does not activate it, so the manager runs the session and
+  pulls in the others (e.g. `external-harnesses` for a CLI worker) on demand. Skills are
+  surfaced to the model as metadata (name, path, description); bodies are read at
+  runtime, as are `SOP.md`, `models.toml`, and `workspaces.toml`.
+- **Runtime:** the manager is a prime-agent session with the `manager` skill active,
+  running an RLM Python kernel as its control environment. Model aliases resolve through
+  `models.toml`; projects resolve through `workspaces.toml` (HUB_MODE) or the working
+  directory (PROJECT_MODE). The launcher exports these as environment variables
+  (`PRIME_WORKER_MODELS`, `PRIME_WORKER_MODE`, `PRIME_WORKER_WORKSPACES`,
+  `PRIME_WORKER_KEEP_AWAKE`).
+- **Worker state:** native workers are RLM children (`rlm.spawn`); results arrive as
+  agent messages. External workers are CLI processes (`codex exec resume`, `cursor-agent
+  -p --resume`, `claude -p --resume`), each wrapped in `bin/keep-awake`; a one-minute
+  heartbeat polls their exit and reads their output files.
+- **Records:** the session directory
+  `~/.prime/agent/session-artifacts/<session-id>/manager/` holds `requests.md` — one
+  entry per request: your wording, the worker handle, the harness session ID, status and
+  result — plus each worker's assignment file and output capture. Coordination records
+  never land in the target repository.
+- **Concurrency:** several workers may share a checkout with no locking. Worktrees are
+  opt-in, plain `git worktree` under `<hub>/worktrees/<workspace>/<worker-handle>` in
+  HUB_MODE; the manager records ownership and never removes one.
+- **Memory:** RLM kernel variables last only until compaction or kernel restart; the
+  session directory is the durable layer; `SOP.md` is the environment-procedure layer.
+- **Harness state (currently disabled):** prime-agent also provides a "refinement"
+  mechanism — `refine.run()` persists prompt notes, memories, and subagent specs into
+  the session's `harness_state.json` (plus a global store), injected into future system
+  prompts as digests. This manager does not use it: per user instruction, procedure
+  changes go to `AGENTS.md` / `SOP.md` instead, and the entries created before the ban
+  were deleted. To re-enable, delete the AGENTS.md refine ban and call `refine.run()`.
 
 ## Talking to a worker yourself
 
-Sometimes relaying through the manager is the wrong shape — you want to argue with the
-worker directly. Ask for it:
+Ask for it: `let me talk to grok about demo 2`. The manager hands over the worker's
+existing session using the handoff procedure recorded in `SOP.md` (tmux, iTerm2,
+zellij, or a plain resume command — if none is recorded yet, it offers to set one up
+with you). It always uses the harness's *interactive* resume (`codex resume`,
+`cursor-agent --resume`, `claude --resume`, `prime-agent attach`) and never attaches
+to your terminal itself — the final command is yours to run.
 
-```text
-let me talk to grok about demo 2
-```
+While you drive the session the manager stands down: it marks the request
+`user-driving`, stops resuming it, and asks the worker what you settled rather than
+inventing a result it never saw. The session is the same one, so nothing is lost.
 
-The manager resolves the handle to that worker's recorded session, opens it in a tmux
-window with the harness's *interactive* resume (`codex resume`, `cursor-agent --resume`,
-`claude --resume`, or `prime-agent attach` for a native worker), and hands you one line:
-
-```bash
-tmux attach -t prime-worker
-```
-
-One tmux session named `prime-worker`, one window per worker handle. Your manager
-terminal is covered while you are attached; `prefix+d` detaches and you are back with
-the manager still running. The manager cannot attach for you — it has no terminal of its
-own — so that command is yours to run.
-
-It is the same session, not a copy. Whatever you say there is in the worker's context
-when the manager next resumes it. What the *manager* loses is sight of those turns, so
-it marks the request `user-driving`, stops resuming that session — no follow-ups, no
-review routing, and the heartbeat leaves it alone — and asks the worker what you settled
-rather than inventing a result it never saw.
-
-Two things worth knowing:
-
-- The worker has to be idle first. Two processes writing one session diverge, so the
-  manager refuses the handoff while the worker is mid-run and offers to send a message
-  instead.
-- An interactive resume uses *your* harness config, not the flags the manager launched
-  with. A worker started read-only may come back with your own sandbox settings.
-
-## Resume
+## Resuming a manager session
 
 Closing the terminal detaches the client; the worker and its children keep running.
 
@@ -235,30 +241,8 @@ If the worker has stopped, `prime-worker --resume` from the same project. Resume
 manager reconciles its record against the live registry before claiming anything is
 still running.
 
-## Verified
+## Known limitations:
 
-Last checked 2026-09-10. Harness CLIs ship often, so treat these as "true when
-tested" rather than permanent, and re-verify anything that matters:
-
-- Skills load, the manager activates, and the project's own `AGENTS.md` still applies.
-- The full chain against a real checkout: implement, review by a second worker, then
-  routing the review back to the _same_ worker rather than a replacement.
-- The request record is written, reconciled against the live registry after reattach,
-  and a failed worker is reported as failed rather than quietly relaunched.
-- Codex, Cursor, and Claude Code each launch, return a real session ID, and resume it
-  with context intact.
-- Cursor takes its prompt positionally and has no stdin form; a stdin prompt is silently
-  never delivered and the run still reports success.
-
-Not yet exercised in a live session: the `models.toml` read, the one-minute heartbeat
-for external workers, the interactive resident-worker path (demos ran over RPC), and the
-tmux handoff — the interactive resume commands are `--help`-verified against the CLIs
-installed here (`codex-cli 0.153.4`, `cursor-agent 2026.09.10`, `claude 2.1.268`), but
-no worker has actually been handed over mid-session yet.
-
-Known limitations:
-
-- Claude Code does not read `AGENTS.md`; its reference adds a prompt preamble.
 - `codex exec resume` takes neither `-C` nor `-s`: set the subprocess working directory
   and use `-c sandbox_mode=`.
 - Cursor needs `--trust` for an unseen directory, and bakes the reasoning level and fast
