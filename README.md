@@ -203,8 +203,8 @@ Agent children rather than a separate CLI.
   result — plus each worker's assignment file and output capture. Coordination records
   never land in the target repository.
 - **Concurrency:** several workers may share a checkout with no locking. Worktrees are
-  opt-in, plain `git worktree` under `<hub>/worktrees/<workspace>/<worker-handle>` in
-  HUB_MODE; the manager records ownership and never removes one.
+  opt-in; where they live and how they are named is an entry in `SOP.md` (the manager
+  records ownership and never removes one).
 - **Memory:** RLM kernel variables last only until compaction or kernel restart; the
   session directory is the durable layer; `SOP.md` is the environment-procedure layer.
 - **Harness state (currently disabled):** prime-agent also provides a "refinement"
