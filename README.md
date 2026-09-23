@@ -210,9 +210,11 @@ Agent children rather than a separate CLI.
 - **Harness state (currently disabled):** prime-agent also provides a "refinement"
   mechanism — `refine.run()` persists prompt notes, memories, and subagent specs into
   the session's `harness_state.json` (plus a global store), injected into future system
-  prompts as digests. This manager does not use it: per user instruction, procedure
-  changes go to `AGENTS.md` / `SOP.md` instead, and the entries created before the ban
-  were deleted. To re-enable, delete the AGENTS.md refine ban and call `refine.run()`.
+  prompts as digests; automatic refinement is governed by `autoRefine.enabled` in
+  `~/.prime/agent/settings.json` (currently `false`). This manager does not use it: per
+  user instruction, procedure changes go to `AGENTS.md` / `SOP.md` instead, and the
+  entries created before the ban were deleted. To re-enable, flip the setting, delete
+  the AGENTS.md refine ban, and call `refine.run()`.
 
 ## Talking to a worker yourself
 
